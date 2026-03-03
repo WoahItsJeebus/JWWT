@@ -1336,12 +1336,12 @@ input[type="range"] {
 
 .resCard.unowned{
 	filter: grayscale(100%) brightness(0.6);
-	transform: scale(1);
+	transform: scale(0.95);
 }
 
 .resCard:not(.unowned){
 	filter: none;
-	transform: scale(1.08);
+	transform: scale(1);
 }
 
 .resCard:hover{
