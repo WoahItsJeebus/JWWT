@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+		<meta name="theme-color" content="#0b0f17">
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+		<title>Placeholder Title</title>
+		<link rel="icon" href="favicon.ico" sizes="any">
+		<link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+		<link rel="stylesheet" href="./assets/site.css">
+	</head>
+	<body>
+		<div class="wrap">
+			<header>
+				<div>
+					<h1>Placeholder Title</h1>
+					<div class="sub">
+						This is a placeholder header.
+					</div>
+				</div>
+			</header>
+
+			<div class="fadeWrap fadeScroll" id="toolbarFade" style="margin-bottom: 12px;">
+				<div class="toolbar hScroll" id="toolbarScroll">
+					<div class="pill" id="storagePill">Storage: Local</div>
+					<div class="pill" id="tzPill">Local TZ: —</div>
+				</div>
+			</div>
+
+			<div class="footer" style="display: flex; justify-content: center;">
+				<code class="inline" id="versionCode">v—</code>
+			</div>
+		</div>
+
+		<div class="tabsBar" style="width: 100%;">
+			<nav class="tabs">
+				<a class="tabBtn active" data-tab="home" href="./"><span class="tabDot"></span> Home</a>
+				<a class="tabBtn" data-tab="about" href="./pages/about/"><span class="tabDot"></span> About</a>
+				<a class="tabBtn" data-tab="settings" href="./pages/settings/"><span class="tabDot"></span> Settings</a>
+			</nav>
+		</div>
+
+		<script type="module">
+			import {
+				attachFadeToScroller,
+				autoMarkActiveTab,
+				initAppSettings,
+				startOrbBackgroundFromSettings,
+				_VERSION
+			} from "./assets/site.js"
+			
+			import { APPS } from "./assets/apps.js"
+			
+			// Always-run boot (won’t brick if api/db/oauth are broken)
+			const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local"
+			document.getElementById("tzPill").textContent = `Local TZ: ${tz}`
+			document.getElementById("versionCode").textContent = `v${_VERSION}`
+			
+			initAppSettings()
+			startOrbBackgroundFromSettings({ spawnEveryMs: 1600, sizeMin: 340, sizeMax: 720 })
+			autoMarkActiveTab("home")
+			
+			attachFadeToScroller(
+				document.getElementById("toolbarScroll"),
+				document.getElementById("toolbarFade")
+			)
+			
+			// Render app tiles from a single table (assets/apps.js)
+			const appsGrid = document.getElementById("appsGrid")
+			
+			function setDotState(dotEl, state){
+				// state: "ok" | "loading" | "error" | "off"
+				if (!dotEl) return
+				dotEl.classList.remove("warn", "bad", "off", "ok")
+				if (state === "loading") dotEl.classList.add("warn")
+				else if (state === "error") dotEl.classList.add("bad")
+				else if (state === "off") dotEl.classList.add("off")
+				else dotEl.classList.add("ok")
+			}
+			
+			function escapeAttr(s){
+				return String(s ?? "")
+					.replaceAll("&", "&amp;")
+					.replaceAll("\"", "&quot;")
+					.replaceAll("<", "&lt;")
+					.replaceAll(">", "&gt;")
+			}
+		</script>
+	</body>
+</html>
