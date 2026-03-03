@@ -89,13 +89,13 @@
 			const images = {};
 
 			for (const chunk of chunks){
-				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&piprop=original&format=json&origin=*`;
+				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&format=json&pithumbsize=400&origin=*`;
 				const res = await fetch(url);
 				const data = await res.json();
 
 				for (const page of Object.values(data.query.pages)){
-					if (page.original){
-						images[page.title] = page.original.source;
+					if (page.thumbnail){
+						images[page.title] = page.thumbnail.source;
 					}
 				}
 			}
@@ -111,6 +111,9 @@
 			const img = document.createElement("img");
 			img.src = imgSrc;
 			img.alt = title;
+
+			// IMPORTANT: avoid Fandom hotlink 404s
+			img.referrerPolicy = "no-referrer";
 
 			el.appendChild(img);
 
