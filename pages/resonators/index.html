@@ -1,65 +1,152 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>WW Resonators Tracker</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <style>
-        body {
-            margin: 0;
-            padding: 1rem;
-            background: #0f0f12;
-            font-family: system-ui, sans-serif;
-            color: white;
-        }
-
-        h1 {
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-
-        #grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 12px;
-        }
-
-        .card {
-            position: relative;
-            cursor: pointer;
-            transition: transform 0.2s ease, filter 0.2s ease;
-        }
-
-        .card img {
-            width: 100%;
-            border-radius: 8px;
-            display: block;
-        }
-
-        .card.unowned {
-            filter: grayscale(100%) brightness(0.6);
-            transform: scale(1);
-        }
-
-        .card.owned {
-            filter: grayscale(0%) brightness(1);
-            transform: scale(1.08);
-        }
-
-        @media (min-width: 768px) {
-            #grid {
-                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            }
-        }
-    </style>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+	<meta name="theme-color" content="#0b0f17">
+	<title>Resonators — JWWT</title>
+	<link rel="stylesheet" href="../../assets/site.css">
 </head>
+
 <body>
+	<div class="wrap">
+		<div class="card">
+			<div class="head">
+				<div class="title">
+					<span>Resonators</span>
+					<span class="tag mono" id="countTag">Loading…</span>
+				</div>
+				<div class="sub">Tap icons to toggle ownership.</div>
+			</div>
 
-<h1>Resonators</h1>
-<div id="grid"></div>
+			<div class="resonatorGrid" id="resGrid"></div>
+		</div>
 
-<script src="resonators.js"></script>
+		<div class="footer" style="text-align:center;">
+			<code class="inline" id="versionCode">v—</code>
+		</div>
 
+	</div>
+
+	<div class="tabsBar">
+		<nav class="tabs">
+			<a class="tabBtn" data-tab="home" href="../../"><span class="tabDot"></span> Home</a>
+			<a class="tabBtn active" data-tab="resonators" href="./"><span class="tabDot"></span> Resonators</a>
+			<a class="tabBtn" data-tab="settings" href="../settings/"><span class="tabDot"></span> Settings</a>
+		</nav>
+	</div>
+
+	<script type="module">
+		import {
+			initAppSettings,
+			startOrbBackgroundFromSettings,
+			autoMarkActiveTab,
+			_VERSION
+		} from "../../assets/site.js";
+
+		document.getElementById("versionCode").textContent = `v${_VERSION}`;
+
+		initAppSettings();
+		startOrbBackgroundFromSettings({ spawnEveryMs: 1600, sizeMin: 340, sizeMax: 720 });
+		autoMarkActiveTab("resonators");
+
+		const API_BASE = "https://wutheringwaves.fandom.com/api.php";
+		const CATEGORY = "Category:Resonators";
+		const STORAGE_KEY = "JWWT_RESONATORS_v1";
+
+		const grid = document.getElementById("resGrid");
+		const countTag = document.getElementById("countTag");
+
+		let owned = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+
+		function saveState(){
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(owned));
+		}
+
+		async function fetchAllResonators(){
+			let members = [];
+			let cmcontinue = null;
+
+			do{
+				let url = `${API_BASE}?action=query&list=categorymembers&cmtitle=${encodeURIComponent(CATEGORY)}&cmlimit=500&format=json&origin=*`;
+				if (cmcontinue) url += `&cmcontinue=${encodeURIComponent(cmcontinue)}`;
+
+				const res = await fetch(url);
+				const data = await res.json();
+
+				members = members.concat(data.query.categorymembers);
+				cmcontinue = data.continue ? data.continue.cmcontinue : null;
+
+			} while (cmcontinue);
+
+			return members.filter(m => m.ns === 0);
+		}
+
+		async function fetchThumbnailsBatch(titles){
+			const chunks = [];
+			while (titles.length) chunks.push(titles.splice(0, 50));
+
+			const images = {};
+
+			for (const chunk of chunks){
+				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&format=json&pithumbsize=200&origin=*`;
+				const res = await fetch(url);
+				const data = await res.json();
+
+				for (const page of Object.values(data.query.pages)){
+					if (page.thumbnail){
+						images[page.title] = page.thumbnail.source;
+					}
+				}
+			}
+
+			return images;
+		}
+
+		function createCard(title, imgSrc){
+			const el = document.createElement("div");
+			el.className = "resCard";
+			if (!owned[title]) el.classList.add("unowned");
+
+			const img = document.createElement("img");
+			img.src = imgSrc;
+			img.alt = title;
+
+			el.appendChild(img);
+
+			el.addEventListener("click", ()=>{
+				owned[title] = !owned[title];
+				el.classList.toggle("unowned", !owned[title]);
+				saveState();
+				updateCount();
+			});
+
+			grid.appendChild(el);
+		}
+
+		function updateCount(){
+			const total = Object.keys(owned).length;
+			const ownedCount = Object.values(owned).filter(Boolean).length;
+			countTag.textContent = `${ownedCount} Owned`;
+		}
+
+		async function init(){
+			const members = await fetchAllResonators();
+			const titles = members.map(m => m.title);
+
+			const thumbs = await fetchThumbnailsBatch([...titles]);
+
+			grid.innerHTML = "";
+
+			for (const title of titles.sort()){
+				if (!thumbs[title]) continue;
+				createCard(title, thumbs[title]);
+			}
+
+			updateCount();
+		}
+
+		init();
+	</script>
 </body>
 </html>

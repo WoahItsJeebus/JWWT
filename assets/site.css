@@ -1289,3 +1289,65 @@ input[type="range"] {
 		max-width: 320px;
 	}
 }
+
+/* Resonator Grid */
+/* ===== Resonator Grid ===== */
+
+/* ===== Resonator Grid ===== */
+
+.resonatorGrid{
+	display: grid;
+	gap: 14px;
+	padding: 16px;
+
+	/* Mobile default (portrait phones) */
+	grid-template-columns: 1fr;
+}
+
+/* Landscape phones / small tablets */
+@media (min-width: 600px){
+	.resonatorGrid{
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+/* Tablets */
+@media (min-width: 900px){
+	.resonatorGrid{
+		grid-template-columns: repeat(3, 1fr);
+	}
+}
+
+/* Desktop */
+@media (min-width: 1200px){
+	.resonatorGrid{
+		grid-template-columns: repeat(5, 1fr);
+	}
+}
+
+.resCard{
+	cursor: pointer;
+	border-radius: 12px;
+	overflow: hidden;
+	transition: transform 150ms ease, filter 150ms ease;
+}
+
+.resCard img{
+	width: 100%;
+	display: block;
+	border-radius: 12px;
+}
+
+.resCard.unowned{
+	filter: grayscale(100%) brightness(0.6);
+	transform: scale(1);
+}
+
+.resCard:not(.unowned){
+	filter: none;
+	transform: scale(1.08);
+}
+
+.resCard:hover{
+	transform: scale(1.12);
+}
