@@ -16,27 +16,16 @@
 					<span>Resonators</span>
 					<span class="tag mono" id="countTag">Loading…</span>
 				</div>
-				<div class="sub">Tap headshots to toggle ownership.</div>
+				<div class="sub">Tap icons to toggle ownership.</div>
 			</div>
 
-			<div class="resonatorGrid" id="playableGrid"></div>
-		</div>
-
-		<div class="card" id="upcomingCard" style="margin-top: 14px; display:none;">
-			<div class="head">
-				<div class="title">
-					<span>Upcoming / Announced</span>
-					<span class="tag mono" id="upcomingTag">—</span>
-				</div>
-				<div class="sub">Informational only (no owned/unowned).</div>
-			</div>
-
-			<div class="resonatorGrid" id="upcomingGrid"></div>
+			<div class="resonatorGrid" id="resGrid"></div>
 		</div>
 
 		<div class="footer" style="text-align:center;">
 			<code class="inline" id="versionCode">v—</code>
 		</div>
+
 	</div>
 
 	<div class="tabsBar">
@@ -56,179 +45,66 @@
 		} from "../../assets/site.js";
 
 		document.getElementById("versionCode").textContent = `v${_VERSION}`;
+
 		initAppSettings();
 		startOrbBackgroundFromSettings({ spawnEveryMs: 1600, sizeMin: 340, sizeMax: 720 });
 		autoMarkActiveTab("resonators");
 
-		// ===== Config =====
 		const API_BASE = "https://wutheringwaves.fandom.com/api.php";
-		const LIST_PAGE = "Resonator/List";
+		const CATEGORY = "Category:Resonators";
 		const STORAGE_KEY = "JWWT_RESONATORS_v1";
 
-		// ===== DOM =====
-		const playableGrid = document.getElementById("playableGrid");
-		const upcomingGrid = document.getElementById("upcomingGrid");
-		const upcomingCard = document.getElementById("upcomingCard");
+		const grid = document.getElementById("resGrid");
 		const countTag = document.getElementById("countTag");
-		const upcomingTag = document.getElementById("upcomingTag");
 
 		let owned = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-		let officialPlayableTotal = 0;
+		let totalResonators = 0;
 
-		function saveState() {
+		function saveState(){
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(owned));
 		}
 
-		function updateCount(playableCountFromList) {
-			// ownedCount counts "true" entries only
-			const ownedCount = Object.values(owned).filter(Boolean).length;
+		async function fetchAllResonators(){
+			let members = [];
+			let cmcontinue = null;
 
-			// Show official total if we found it, otherwise fallback to parsed playable count
-			const total = officialPlayableTotal || playableCountFromList || 0;
-			countTag.textContent = `${ownedCount} Owned / ${total || "—"}`;
+			do{
+				let url = `${API_BASE}?action=query&list=categorymembers&cmtitle=${encodeURIComponent(CATEGORY)}&cmlimit=500&format=json&origin=*`;
+				if (cmcontinue) url += `&cmcontinue=${encodeURIComponent(cmcontinue)}`;
+
+				const res = await fetch(url);
+				const data = await res.json();
+
+				members = members.concat(data.query.categorymembers);
+				cmcontinue = data.continue ? data.continue.cmcontinue : null;
+
+			} while (cmcontinue);
+
+			return members.filter(m => m.ns === 0);
 		}
 
-		function firstUrlFromSrcset(srcset) {
-			if (!srcset) return "";
-			// srcset: "url1 1x, url2 2x" or "url 400w, url 800w"
-			const first = srcset.split(",")[0]?.trim();
-			if (!first) return "";
-			return first.split(/\s+/)[0]?.trim() || "";
-		}
+		async function fetchThumbnailsBatch(titles){
+			const chunks = [];
+			while (titles.length) chunks.push(titles.splice(0, 50));
 
-		function getImgUrl(img) {
-			if (!img) return "";
+			const images = {};
 
-			// Priority order: real src → lazy attributes → srcset → lazy srcset
-			const src =
-				img.getAttribute("src") ||
-				img.getAttribute("data-src") ||
-				img.getAttribute("data-lazy-src") ||
-				img.getAttribute("data-original") ||
-				"";
+			for (const chunk of chunks){
+				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&format=json&pithumbsize=400&origin=*`;
+				const res = await fetch(url);
+				const data = await res.json();
 
-			// If src is a tiny placeholder, fall back to srcset
-			const srcset =
-				img.getAttribute("srcset") ||
-				img.getAttribute("data-srcset") ||
-				img.getAttribute("data-lazy-srcset") ||
-				"";
-
-			let url = src;
-
-			// Common placeholders on fandom: 1x1 gif or blank
-			const looksPlaceholder =
-				!url ||
-				/transparent|1x1|pixel|spacer|blank/i.test(url) ||
-				url.startsWith("data:");
-
-			if (looksPlaceholder) {
-				const fromSet = firstUrlFromSrcset(srcset);
-				if (fromSet) url = fromSet;
-			}
-
-			return normalizeUrl(url);
-		}
-
-		function normalizeUrl(src) {
-			if (!src) return "";
-			// Fandom sometimes gives protocol-relative URLs
-			if (src.startsWith("//")) return "https:" + src;
-			// Some parse HTML can have relative paths
-			if (src.startsWith("/")) return "https://wutheringwaves.fandom.com" + src;
-			return src;
-		}
-
-		async function fetchParsedHtml(pageTitle) {
-			const url =
-				`${API_BASE}?action=parse&page=${encodeURIComponent(pageTitle)}` +
-				`&prop=text&format=json&origin=*`;
-
-			const res = await fetch(url);
-			if (!res.ok) throw new Error(`parse failed: ${res.status}`);
-			const data = await res.json();
-
-			const html = data?.parse?.text?.["*"];
-			if (!html) throw new Error("parse returned no html");
-
-			return html;
-		}
-
-		function extractOfficialTotal(doc) {
-			// Look for the exact phrase pattern in page text
-			const text = doc.body?.innerText || "";
-			const m = text.match(/There\s+are\s+(\d+)\s+playable\s+Resonators\s*:/i);
-			if (!m) return 0;
-			const n = Number(m[1]);
-			return Number.isFinite(n) ? n : 0;
-		}
-
-		function findHeading(doc, re) {
-			// MediaWiki renders headings as h2/h3/etc with ids sometimes.
-			const headings = doc.querySelectorAll("h2, h3, h4");
-			for (const h of headings) {
-				const t = (h.textContent || "").trim();
-				if (re.test(t)) return h;
-			}
-			return null;
-		}
-
-		function collectCardsFromSection(doc, startHeading, stopHeadingRegex) {
-			// Collect candidate items between heading A and the next heading that matches stop regex (or any h2 if stop regex omitted)
-			const items = [];
-			const seen = new Set();
-
-			if (!startHeading) return items;
-
-			let node = startHeading.nextElementSibling;
-
-			while (node) {
-				// Stop when we hit a next major section
-				if (node.matches("h2, h3, h4")) {
-					const ht = (node.textContent || "").trim();
-					if (!stopHeadingRegex || stopHeadingRegex.test(ht)) break;
+				for (const page of Object.values(data.query.pages)){
+					if (page.thumbnail){
+						images[page.title] = page.thumbnail.source;
+					}
 				}
-
-				// Collect from tables, galleries, lists, etc.
-				// Strategy: find links to /wiki/SomeName and an image near them
-				const links = node.querySelectorAll('a[href^="/wiki/"]');
-				for (const a of links) {
-					const href = a.getAttribute("href") || "";
-					// ignore special pages / categories / files
-					if (href.includes(":")) continue;
-
-					const title = (a.textContent || "").trim() || decodeURIComponent(href.split("/wiki/")[1] || "").replaceAll("_", " ");
-					if (!title) continue;
-
-					// Try to find a nearby image: within the anchor, or parent cell, or nearest container
-					let img =
-						a.querySelector("img") ||
-						a.closest("figure, td, li, div")?.querySelector("img") ||
-						null;
-
-					// const imgSrc = normalizeUrl(img?.getAttribute("src") || "");
-					const imgSrc = getImgUrl(img);
-
-					// Must have an image, otherwise it's likely just a nav link
-					if (!imgSrc) continue;
-
-					// De-dupe by title
-					const key = title.toLowerCase();
-					if (seen.has(key)) continue;
-					seen.add(key);
-
-					items.push({ title, imgSrc, href: "https://wutheringwaves.fandom.com" + href });
-				}
-
-				node = node.nextElementSibling;
 			}
 
-			return items;
+			return images;
 		}
 
-		function createPlayableCard(item) {
-			const { title, imgSrc } = item;
-
+		function createCard(title, imgSrc){
 			const el = document.createElement("div");
 			el.className = "resCard";
 			if (!owned[title]) el.classList.add("unowned");
@@ -237,89 +113,44 @@
 			img.src = imgSrc;
 			img.alt = title;
 
-			// Avoid Fandom hotlink 404s
+			// IMPORTANT: avoid Fandom hotlink 404s
 			img.referrerPolicy = "no-referrer";
 
 			el.appendChild(img);
 
-			el.addEventListener("click", () => {
+			el.addEventListener("click", ()=>{
 				owned[title] = !owned[title];
 				el.classList.toggle("unowned", !owned[title]);
 				saveState();
-				updateCount(); // uses stored officialPlayableTotal
+				updateCount();
 			});
 
-			playableGrid.appendChild(el);
+			grid.appendChild(el);
 		}
 
-		function createUpcomingCard(item) {
-			const { title, imgSrc, href } = item;
-
-			const el = document.createElement("a");
-			el.className = "resCard";
-			el.href = href;
-			el.target = "_blank";
-			el.rel = "noopener noreferrer";
-
-			const img = document.createElement("img");
-			img.src = imgSrc;
-			img.alt = title;
-			img.referrerPolicy = "no-referrer";
-
-			el.appendChild(img);
-			upcomingGrid.appendChild(el);
+		function updateCount(){
+			const total = Object.keys(owned).length;
+			const ownedCount = Object.values(owned).filter(Boolean).length;
+			countTag.textContent = `${ownedCount} Owned / ${totalResonators}`;
 		}
 
-		async function init() {
-			// Fetch parsed HTML from the wiki list page
-			const html = await fetchParsedHtml(LIST_PAGE);
+		async function init(){
+			const members = await fetchAllResonators();
+			const titles = members.map(m => m.title);
 
-			// Parse into a detached document
-			const doc = new DOMParser().parseFromString(html, "text/html");
+			const thumbs = await fetchThumbnailsBatch([...titles]);
+			totalResonators = titles.length;
+			grid.innerHTML = "";
 
-			// 1) Official total
-			officialPlayableTotal = extractOfficialTotal(doc);
-
-			// 2) Playable section
-			// If headings change, this still finds likely matches.
-			let playableHeading =
-				findHeading(doc, /\bPlayable\b/i) ||
-				findHeading(doc, /\bResonators\b/i);
-
-			// Stop when we hit "Upcoming" heading if present
-			const playableItems = collectCardsFromSection(doc, playableHeading, /\bUpcoming\b|\bAnnounced\b/i);
-
-			// 3) Upcoming section (optional)
-			const upcomingHeading =
-				findHeading(doc, /\bUpcoming\b|\bAnnounced\b/i);
-
-			const upcomingItems = collectCardsFromSection(doc, upcomingHeading, null);
-
-			// Sort playable alphabetically for a stable grid
-			playableItems.sort((a, b) => a.title.localeCompare(b.title));
-
-			// Render
-			playableGrid.innerHTML = "";
-			upcomingGrid.innerHTML = "";
-
-			for (const item of playableItems) createPlayableCard(item);
-
-			// Update count using official total (if found) or parsed playable count
-			updateCount(playableItems.length);
-
-			if (upcomingItems.length) {
-				upcomingCard.style.display = "";
-				upcomingTag.textContent = `${upcomingItems.length}`;
-				// You might *not* want alpha sort here if wiki order matters, but it’s nicer visually:
-				upcomingItems.sort((a, b) => a.title.localeCompare(b.title));
-				for (const item of upcomingItems) createUpcomingCard(item);
+			for (const title of titles.sort()){
+				if (!thumbs[title]) continue;
+				createCard(title, thumbs[title]);
 			}
+
+			updateCount();
 		}
 
-		init().catch((err) => {
-			console.error(err);
-			countTag.textContent = "Error";
-		});
+		init();
 	</script>
 </body>
 </html>

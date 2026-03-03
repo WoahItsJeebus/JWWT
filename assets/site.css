@@ -1291,10 +1291,6 @@ input[type="range"] {
 }
 
 /* Resonator Grid */
-/* ===== Resonator Grid ===== */
-
-/* ===== Resonator Grid ===== */
-
 .resonatorGrid{
 	display: grid;
 	gap: 14px;
