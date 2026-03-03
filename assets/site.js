@@ -2,7 +2,7 @@
    site.js — shared helpers for all pages
    ============================================================ */
    
-   export const _VERSION = "1.0.0.9";
+   export const _VERSION = "1.0.0.0";
    
 /**
  *
@@ -455,7 +455,7 @@ export function hardReload() {
    Settings (localStorage)
    ============================================================ */
 
-export const JApps_SETTINGS_KEY = "JApps_SETTINGS_v1";
+export const JWWT_SETTINGS_KEY = "JWWT_SETTINGS_v1";
 
 export function getDefaultAppSettings() {
 	return {
@@ -501,7 +501,7 @@ function _safeParseJson(raw) {
 
 export function loadAppSettings(defaults = getDefaultAppSettings()) {
 	try {
-		const raw = localStorage.getItem(JSTC_SETTINGS_KEY);
+		const raw = localStorage.getItem(JWWT_SETTINGS_KEY);
 		if (!raw) return structuredClone(defaults);
 
 		const parsed = _safeParseJson(raw);
@@ -532,7 +532,7 @@ export function loadAppSettings(defaults = getDefaultAppSettings()) {
 
 export function saveAppSettings(settingsObj) {
 	try {
-		localStorage.setItem(JSTC_SETTINGS_KEY, JSON.stringify(settingsObj || {}));
+		localStorage.setItem(JWWT_SETTINGS_KEY, JSON.stringify(settingsObj || {}));
 		return true;
 	}
 	catch {
@@ -577,7 +577,7 @@ export function initAppSettings(defaults = getDefaultAppSettings()) {
 
 	// Cross-tab/page sync
 	window.addEventListener("storage", (ev) => {
-		if (ev.key !== JSTC_SETTINGS_KEY) return;
+		if (ev.key !== JWWT_SETTINGS_KEY) return;
 		applyAppSettings(loadAppSettings(defaults));
 	});
 
