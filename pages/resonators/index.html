@@ -89,13 +89,13 @@
 			const images = {};
 
 			for (const chunk of chunks){
-				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&format=json&pithumbsize=200&origin=*`;
+				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&piprop=original&format=json&origin=*`;
 				const res = await fetch(url);
 				const data = await res.json();
 
 				for (const page of Object.values(data.query.pages)){
-					if (page.thumbnail){
-						images[page.title] = page.thumbnail.source;
+					if (page.original){
+						images[page.title] = page.original.source;
 					}
 				}
 			}
