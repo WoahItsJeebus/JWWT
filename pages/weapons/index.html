@@ -1,65 +1,449 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>WW Resonators Tracker</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+	<meta name="theme-color" content="#0b0f17">
+	<meta name="referrer" content="no-referrer">
+	<title>Weapons — JWWT</title>
+	<link rel="stylesheet" href="../../assets/site.css">
 
-    <style>
-        body {
-            margin: 0;
-            padding: 1rem;
-            background: #0f0f12;
-            font-family: system-ui, sans-serif;
-            color: white;
-        }
+	<!-- Small page-specific polish; you can move this into site.css later if you want -->
+	<style>
+		/* Same grid idea as resonators, but labels need room */
+		.weaponGrid{
+			display: grid;
+			gap: 12px;
+			padding: 16px;
 
-        h1 {
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
+			/* default: icon tiles */
+			grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+		}
 
-        #grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-            gap: 12px;
-        }
+		.weaponCard{
+			cursor: pointer;
+			border-radius: 12px;
+			overflow: hidden;
+			transition: transform 150ms ease, filter 150ms ease;
+			-webkit-tap-highlight-color: transparent;
+		}
 
-        .card {
-            position: relative;
-            cursor: pointer;
-            transition: transform 0.2s ease, filter 0.2s ease;
-        }
+		.weaponCard.unowned{
+			filter: grayscale(100%) brightness(0.62);
+			transform: scale(1);
+		}
 
-        .card img {
-            width: 100%;
-            border-radius: 8px;
-            display: block;
-        }
+		.weaponCard:not(.unowned){
+			filter: none;
+			transform: scale(1.06);
+		}
 
-        .card.unowned {
-            filter: grayscale(100%) brightness(0.6);
-            transform: scale(1);
-        }
+		.weaponCard:hover{
+			transform: scale(1.09);
+		}
 
-        .card.owned {
-            filter: grayscale(0%) brightness(1);
-            transform: scale(1.08);
-        }
+		.weaponImgWrap{
+			width: 100%;
+			aspect-ratio: 1 / 1;
+			display: grid;
+			place-items: center;
+			padding: 10px;
+		}
 
-        @media (min-width: 768px) {
-            #grid {
-                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            }
-        }
-    </style>
+		.weaponImg{
+			width: 100%;
+			height: 100%;
+			object-fit: contain;
+			display: block;
+			border-radius: 12px;
+			background: rgba(0,0,0,.10);
+			box-shadow: 0 0 0 1px rgba(255,255,255,.10);
+		}
+
+		.weaponMeta{
+			padding: 10px 10px 12px 10px;
+			display: grid;
+			gap: 6px;
+			background: rgba(0,0,0,.12);
+			border-top: 1px solid rgba(255,255,255,.06);
+		}
+
+		.weaponName{
+			font-weight: 800;
+			font-size: 12px;
+			line-height: 1.2;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.weaponStars{
+			display: inline-flex;
+			align-items: center;
+			gap: 2px;
+			min-height: 12px;
+		}
+
+		.weaponStar{
+			width: 12px;
+			height: 12px;
+			opacity: .95;
+			display: block;
+		}
+
+		/* Mobile: make tiles a bit bigger and less columns */
+		@media (max-width: 520px){
+			.weaponGrid{
+				grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+			}
+		}
+	</style>
 </head>
+
 <body>
+	<div class="wrap">
+		<div class="card">
+			<div class="head">
+				<div class="title">
+					<span>Weapons</span>
+					<span class="tag mono" id="countTag">Loading…</span>
+				</div>
+				<div class="sub">Tap weapons to toggle ownership. Grayscale = unowned.</div>
+			</div>
 
-<h1>Resonators</h1>
-<div id="grid"></div>
+			<!-- Sections render here -->
+			<div id="sectionsHost"></div>
+		</div>
 
-<script src="resonators.js"></script>
+		<div class="footer" style="text-align:center;">
+			<code class="inline" id="versionCode">v—</code>
+		</div>
+	</div>
 
+	<div class="tabsBar">
+		<nav class="tabs">
+			<a class="tabBtn" data-tab="home" href="../../"><span class="tabDot"></span>Home</a>
+			<a class="tabBtn" data-tab="resonators" href="../resonators/"><span class="tabDot"></span>Resonators</a>
+			<a class="tabBtn active" data-tab="weapons" href="./"><span class="tabDot"></span>Weapons</a>
+			<a class="tabBtn" data-tab="settings" href="../settings/"><span class="tabDot"></span>Settings</a>
+		</nav>
+	</div>
+
+	<script type="module">
+		import {
+			initAppSettings,
+			startOrbBackgroundFromSettings,
+			autoMarkActiveTab,
+			_VERSION
+		} from "../../assets/site.js";
+
+		document.getElementById("versionCode").textContent = `v${_VERSION}`;
+		initAppSettings();
+		startOrbBackgroundFromSettings({ spawnEveryMs: 1600, sizeMin: 340, sizeMax: 720 });
+		autoMarkActiveTab("weapons");
+
+		// ===== Config =====
+		const API_BASE = "https://wutheringwaves.fandom.com/api.php";
+		const LIST_PAGE = "Weapon/List";
+		const STORAGE_KEY = "JWWT_WEAPONS_v1";
+
+		// Fill these in however you want (or swap to CSS background / inline SVG later)
+		// If you leave them blank, it will fall back to plain text stars.
+		const STAR_IMG = {
+			1: "", // "https://....png"
+			2: "",
+			3: "",
+			4: "",
+			5: "",
+		};
+
+		const countTag = document.getElementById("countTag");
+		const sectionsHost = document.getElementById("sectionsHost");
+
+		let owned = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+
+		function saveState(){
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(owned));
+		}
+
+		function normalizeUrl(src){
+			if (!src) return "";
+			if (src.startsWith("//")) return "https:" + src;
+			if (src.startsWith("/")) return "https://wutheringwaves.fandom.com" + src;
+			return src;
+		}
+
+		function firstUrlFromSrcset(srcset){
+			if (!srcset) return "";
+			const first = srcset.split(",")[0]?.trim();
+			if (!first) return "";
+			return first.split(/\s+/)[0]?.trim() || "";
+		}
+
+		function getImgUrl(img){
+			if (!img) return "";
+			const src =
+				img.getAttribute("src") ||
+				img.getAttribute("data-src") ||
+				img.getAttribute("data-lazy-src") ||
+				img.getAttribute("data-original") ||
+				"";
+
+			const srcset =
+				img.getAttribute("srcset") ||
+				img.getAttribute("data-srcset") ||
+				img.getAttribute("data-lazy-srcset") ||
+				"";
+
+			let url = src;
+
+			const looksPlaceholder =
+				!url ||
+				url.startsWith("data:") ||
+				/transparent|1x1|pixel|spacer|blank/i.test(url);
+
+			if (looksPlaceholder){
+				const fromSet = firstUrlFromSrcset(srcset);
+				if (fromSet) url = fromSet;
+			}
+
+			return normalizeUrl(url);
+		}
+
+		async function fetchParsedHtml(pageTitle){
+			const url = `${API_BASE}?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&format=json&origin=*`;
+			const res = await fetch(url);
+			if (!res.ok) throw new Error(`parse failed: ${res.status}`);
+			const data = await res.json();
+			const html = data?.parse?.text?.["*"];
+			if (!html) throw new Error("parse returned no html");
+			return html;
+		}
+
+		function findWeaponTable(doc){
+			// Find a table that has the expected headers (Icon, Name, Rarity, Type)
+			const tables = Array.from(doc.querySelectorAll("table"));
+			for (const t of tables){
+				const ths = Array.from(t.querySelectorAll("th")).map(x => (x.textContent || "").trim().toLowerCase());
+				const hasIcon = ths.some(s => s === "icon");
+				const hasName = ths.some(s => s === "name");
+				const hasRarity = ths.some(s => s === "rarity");
+				const hasType = ths.some(s => s === "type");
+				if (hasIcon && hasName && hasRarity && hasType) return t;
+			}
+			return null;
+		}
+
+		function parseRarity(cell){
+			if (!cell) return 0;
+
+			// Often the rarity cell contains star icons; count images if present
+			const imgs = cell.querySelectorAll("img");
+			if (imgs && imgs.length){
+				// Sometimes it’s one image that *represents* multiple stars; fallback to text
+				const altStars = (cell.textContent || "").match(/★/g);
+				if (altStars && altStars.length) return altStars.length;
+
+				// If it’s literally multiple star images, count them
+				// (but avoid counting unrelated icons)
+				let starCount = 0;
+				for (const img of imgs){
+					const alt = (img.getAttribute("alt") || "").toLowerCase();
+					if (alt.includes("star")) starCount++;
+				}
+				if (starCount) return starCount;
+			}
+
+			// Text fallback (★★★★★)
+			const stars = (cell.textContent || "").match(/★/g);
+			return stars ? stars.length : 0;
+		}
+
+		function parseWeaponsFromTable(table){
+			const out = [];
+
+			// Determine column indices by header text (more robust than hardcoding)
+			const headerRow = table.querySelector("tr");
+			if (!headerRow) return out;
+
+			const headers = Array.from(headerRow.querySelectorAll("th")).map(th => (th.textContent || "").trim().toLowerCase());
+			const idxIcon = headers.indexOf("icon");
+			const idxName = headers.indexOf("name");
+			const idxRarity = headers.indexOf("rarity");
+			const idxType = headers.indexOf("type");
+
+			const rows = Array.from(table.querySelectorAll("tr")).slice(1);
+			for (const tr of rows){
+				const tds = tr.querySelectorAll("td");
+				if (!tds || tds.length < 4) continue;
+
+				const iconCell = tds[idxIcon];
+				const nameCell = tds[idxName];
+				const rarityCell = tds[idxRarity];
+				const typeCell = tds[idxType];
+
+				const a = nameCell?.querySelector('a[href^="/wiki/"]');
+				const name = (a?.textContent || nameCell?.textContent || "").trim();
+				if (!name) continue;
+
+				const type = (typeCell?.textContent || "").trim();
+				if (!type) continue;
+
+				const iconImg = iconCell?.querySelector("img");
+				const iconUrl = getImgUrl(iconImg);
+
+				const rarity = parseRarity(rarityCell);
+
+				out.push({ name, type, rarity, iconUrl });
+			}
+
+			return out;
+		}
+
+		function renderStars(rarity){
+			const wrap = document.createElement("div");
+			wrap.className = "weaponStars";
+
+			const starUrl = STAR_IMG[rarity] || "";
+			if (starUrl){
+				for (let i = 0; i < rarity; i++){
+					const s = document.createElement("img");
+					s.className = "weaponStar";
+					s.alt = "★";
+					s.src = starUrl;
+					s.referrerPolicy = "no-referrer";
+					s.setAttribute("referrerpolicy", "no-referrer");
+					wrap.appendChild(s);
+				}
+				return wrap;
+			}
+
+			// Fallback: text stars if you haven’t filled STAR_IMG yet
+			wrap.textContent = "★".repeat(Math.max(0, rarity));
+			return wrap;
+		}
+
+		function createWeaponCard(w){
+			const el = document.createElement("div");
+			el.className = "weaponCard";
+			if (!owned[w.name]) el.classList.add("unowned");
+
+			const imgWrap = document.createElement("div");
+			imgWrap.className = "weaponImgWrap";
+
+			const img = document.createElement("img");
+			img.className = "weaponImg";
+			img.alt = w.name;
+			img.src = w.iconUrl || "";
+			img.referrerPolicy = "no-referrer";
+			img.setAttribute("referrerpolicy", "no-referrer");
+
+			imgWrap.appendChild(img);
+
+			const meta = document.createElement("div");
+			meta.className = "weaponMeta";
+
+			const name = document.createElement("div");
+			name.className = "weaponName";
+			name.title = w.name;
+			name.textContent = w.name;
+
+			meta.appendChild(name);
+			meta.appendChild(renderStars(w.rarity));
+
+			el.appendChild(imgWrap);
+			el.appendChild(meta);
+
+			el.addEventListener("click", ()=>{
+				owned[w.name] = !owned[w.name];
+				el.classList.toggle("unowned", !owned[w.name]);
+				saveState();
+				updateOwnedCount();
+			});
+
+			return el;
+		}
+
+		function updateOwnedCount(){
+			const ownedCount = Object.values(owned).filter(Boolean).length;
+			countTag.textContent = `${ownedCount} Owned`;
+		}
+
+		function createTypeSection(typeName, weapons){
+			const card = document.createElement("div");
+			card.className = "card";
+			card.style.marginTop = "14px";
+
+			const head = document.createElement("div");
+			head.className = "head";
+
+			const left = document.createElement("div");
+			left.className = "title";
+			left.innerHTML = `<span>${typeName}</span>`;
+
+			const tag = document.createElement("span");
+			tag.className = "tag mono";
+			tag.textContent = `${weapons.length}`;
+
+			left.appendChild(tag);
+
+			const sub = document.createElement("div");
+			sub.className = "sub";
+			sub.textContent = "Tap to toggle ownership.";
+
+			head.appendChild(left);
+			head.appendChild(sub);
+
+			const grid = document.createElement("div");
+			grid.className = "weaponGrid";
+
+			weapons
+				.slice()
+				.sort((a,b)=>a.name.localeCompare(b.name))
+				.forEach(w => grid.appendChild(createWeaponCard(w)));
+
+			card.appendChild(head);
+			card.appendChild(grid);
+
+			return card;
+		}
+
+		async function init(){
+			const html = await fetchParsedHtml(LIST_PAGE);
+			const doc = new DOMParser().parseFromString(html, "text/html");
+
+			const table = findWeaponTable(doc);
+			if (!table){
+				countTag.textContent = "Error: table not found";
+				return;
+			}
+
+			const weapons = parseWeaponsFromTable(table);
+
+			// Group by type
+			const byType = new Map();
+			for (const w of weapons){
+				const k = w.type;
+				if (!byType.has(k)) byType.set(k, []);
+				byType.get(k).push(w);
+			}
+
+			sectionsHost.innerHTML = "";
+			updateOwnedCount();
+
+			// Render sections in stable order
+			Array.from(byType.keys())
+				.sort((a,b)=>a.localeCompare(b))
+				.forEach(typeName=>{
+					const section = createTypeSection(typeName, byType.get(typeName));
+					sectionsHost.appendChild(section);
+				});
+		}
+
+		init().catch(err=>{
+			console.error(err);
+			countTag.textContent = "Error";
+		});
+	</script>
 </body>
 </html>
