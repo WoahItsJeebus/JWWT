@@ -147,8 +147,6 @@
 		const LIST_PAGE = "Weapon/List";
 		const STORAGE_KEY = "JWWT_WEAPONS_v1";
 
-		// Fill these in however you want (or swap to CSS background / inline SVG later)
-		// If you leave them blank, it will fall back to plain text stars.
 		const STAR_IMG = {
 			1: "", // "https://....png"
 			2: "",
@@ -161,6 +159,7 @@
 		const sectionsHost = document.getElementById("sectionsHost");
 
 		let owned = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+		let totalWeapons = 0;
 
 		function saveState(){
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(owned));
@@ -180,13 +179,67 @@
 			return first.split(/\s+/)[0]?.trim() || "";
 		}
 
+		function isPlaceholderUrl(url){
+			if (!url) return true;
+			if (url.startsWith("data:")) return true;
+			return /transparent|1x1|pixel|spacer|blank/i.test(url);
+		}
+
+		function bestUrlFromSrcset(srcset){
+			if (!srcset) return "";
+			const parts = srcset.split(",").map(x => x.trim()).filter(Boolean);
+
+			// srcset entries look like: "URL 120w" or "URL 2x"
+			let best = { url: "", score: -1 };
+
+			for (const p of parts){
+				const [urlRaw, sizeRaw] = p.split(/\s+/);
+				if (!urlRaw) continue;
+
+				let score = 0;
+				if (sizeRaw?.endsWith("w")) score = parseInt(sizeRaw, 10) || 0;
+				else if (sizeRaw?.endsWith("x")) score = (parseFloat(sizeRaw) || 0) * 10000; // favor 2x/3x hard
+
+				if (score > best.score){
+					best = { url: urlRaw, score };
+				}
+			}
+
+			return best.url || "";
+		}
+
+		function toOriginalFandomImage(url){
+			if (!url) return "";
+			url = normalizeUrl(url);
+
+			// Remove common thumbnail/scaling segments
+			// Examples:
+			// .../scale-to-width-down/120?cb=...
+			// .../thumb/....../120px-FileName.png
+			url = url.replace(/\/scale-to-width-down\/\d+(\?[^#]*)?$/i, "");
+			url = url.replace(/\/scale-to-width\/\d+(\?[^#]*)?$/i, "");
+			url = url.replace(/\/thumb\/([^?]+)\/\d+px-[^/]+$/i, "/$1");
+
+			// Strip query params (usually cache-busters like ?cb=123)
+			url = url.split("?")[0];
+
+			// Append latest revision (works well on Fandom)
+			if (!/\/revision\/latest/i.test(url)){
+				url += "/revision/latest";
+			}
+
+			return url;
+		}
+
 		function getImgUrl(img){
 			if (!img) return "";
-			const src =
-				img.getAttribute("src") ||
+
+			const src = img.getAttribute("src") || "";
+			const dataSrc =
 				img.getAttribute("data-src") ||
 				img.getAttribute("data-lazy-src") ||
 				img.getAttribute("data-original") ||
+				img.getAttribute("data-image-src") ||
 				"";
 
 			const srcset =
@@ -195,19 +248,20 @@
 				img.getAttribute("data-lazy-srcset") ||
 				"";
 
-			let url = src;
+			// const fromSet = firstUrlFromSrcset(srcset);
+			const fromSet = bestUrlFromSrcset(srcset);
 
-			const looksPlaceholder =
-				!url ||
-				url.startsWith("data:") ||
-				/transparent|1x1|pixel|spacer|blank/i.test(url);
+			// Try in order: data-src first (usually the real one), then srcset, then src.
+			const candidates = [dataSrc, fromSet, src]
+				.map(s => normalizeUrl((s || "").trim()))
+				.filter(Boolean);
 
-			if (looksPlaceholder){
-				const fromSet = firstUrlFromSrcset(srcset);
-				if (fromSet) url = fromSet;
+			for (const u of candidates){
+				if (!isPlaceholderUrl(u)) return u;
 			}
 
-			return normalizeUrl(url);
+			// If everything looks placeholder-y, return the best we have (sometimes still works)
+			return candidates[0] || "";
 		}
 
 		async function fetchParsedHtml(pageTitle){
@@ -237,57 +291,77 @@
 		function parseRarity(cell){
 			if (!cell) return 0;
 
-			// Often the rarity cell contains star icons; count images if present
-			const imgs = cell.querySelectorAll("img");
-			if (imgs && imgs.length){
-				// Sometimes it’s one image that *represents* multiple stars; fallback to text
-				const altStars = (cell.textContent || "").match(/★/g);
-				if (altStars && altStars.length) return altStars.length;
+			// If the cell has star icons, many wikis use a single image with alt/title like "5 Stars"
+			const imgs = Array.from(cell.querySelectorAll("img"));
+			if (imgs.length) {
+				// Try to extract a digit from alt/title/aria-label
+				for (const img of imgs) {
+					const s = [
+						img.getAttribute("alt"),
+						img.getAttribute("title"),
+						img.getAttribute("aria-label"),
+						cell.getAttribute("aria-label"),
+						cell.textContent
+					].filter(Boolean).join(" ");
 
-				// If it’s literally multiple star images, count them
-				// (but avoid counting unrelated icons)
-				let starCount = 0;
-				for (const img of imgs){
-					const alt = (img.getAttribute("alt") || "").toLowerCase();
-					if (alt.includes("star")) starCount++;
+					const m = s.match(/([1-5])\s*(?:star|stars|★)/i);
+					if (m) return Number(m[1]);
 				}
-				if (starCount) return starCount;
+
+				// If there are multiple star images (rare), count them
+				if (imgs.length > 1) return imgs.length;
+
+				// Last fallback: if there's 1 image but no usable text, assume 5 is more likely than 1
+				// (you can change this default if you want)
+				return 5;
 			}
 
-			// Text fallback (★★★★★)
+			// Text fallback if the wiki uses literal stars
 			const stars = (cell.textContent || "").match(/★/g);
 			return stars ? stars.length : 0;
+		}
+
+		function headerIndex(headers, needle) {
+			needle = needle.toLowerCase();
+			return headers.findIndex(h => h.includes(needle));
 		}
 
 		function parseWeaponsFromTable(table){
 			const out = [];
 
-			// Determine column indices by header text (more robust than hardcoding)
-			const headerRow = table.querySelector("tr");
+			// Prefer the thead header row if present
+			const headerRow = table.querySelector("thead tr") || table.querySelector("tr");
 			if (!headerRow) return out;
 
-			const headers = Array.from(headerRow.querySelectorAll("th")).map(th => (th.textContent || "").trim().toLowerCase());
-			const idxIcon = headers.indexOf("icon");
-			const idxName = headers.indexOf("name");
-			const idxRarity = headers.indexOf("rarity");
-			const idxType = headers.indexOf("type");
+			const headers = Array.from(headerRow.querySelectorAll("th"))
+				.map(th => (th.textContent || "").trim().toLowerCase());
 
-			const rows = Array.from(table.querySelectorAll("tr")).slice(1);
+			const idxIcon   = headerIndex(headers, "icon");
+			const idxName   = headerIndex(headers, "name");
+			const idxRarity = headerIndex(headers, "rarity");
+			const idxType   = headerIndex(headers, "type");
+
+			if ([idxIcon, idxName, idxRarity, idxType].some(i => i < 0)) {
+				console.warn("Weapon table header indices not found:", { headers, idxIcon, idxName, idxRarity, idxType });
+				return out;
+			}
+
+			// Rows: prefer tbody
+			const rows = Array.from(table.querySelectorAll("tbody tr"));
 			for (const tr of rows){
-				const tds = tr.querySelectorAll("td");
-				if (!tds || tds.length < 4) continue;
+				const tds = Array.from(tr.querySelectorAll("td"));
+				if (!tds.length) continue;
 
-				const iconCell = tds[idxIcon];
-				const nameCell = tds[idxName];
+				const iconCell   = tds[idxIcon];
+				const nameCell   = tds[idxName];
 				const rarityCell = tds[idxRarity];
-				const typeCell = tds[idxType];
+				const typeCell   = tds[idxType];
 
 				const a = nameCell?.querySelector('a[href^="/wiki/"]');
 				const name = (a?.textContent || nameCell?.textContent || "").trim();
-				if (!name) continue;
-
 				const type = (typeCell?.textContent || "").trim();
-				if (!type) continue;
+
+				if (!name || !type) continue;
 
 				const iconImg = iconCell?.querySelector("img");
 				const iconUrl = getImgUrl(iconImg);
@@ -334,7 +408,8 @@
 			const img = document.createElement("img");
 			img.className = "weaponImg";
 			img.alt = w.name;
-			img.src = w.iconUrl || "";
+			// img.src = w.iconUrl || "";
+			img.src = toOriginalFandomImage(w.iconUrl || "");
 			img.referrerPolicy = "no-referrer";
 			img.setAttribute("referrerpolicy", "no-referrer");
 
@@ -366,7 +441,7 @@
 
 		function updateOwnedCount(){
 			const ownedCount = Object.values(owned).filter(Boolean).length;
-			countTag.textContent = `${ownedCount} Owned`;
+			countTag.textContent = `${ownedCount} / ${totalWeapons} Owned`;
 		}
 
 		function createTypeSection(typeName, weapons){
@@ -386,13 +461,7 @@
 			tag.textContent = `${weapons.length}`;
 
 			left.appendChild(tag);
-
-			const sub = document.createElement("div");
-			sub.className = "sub";
-			sub.textContent = "Tap to toggle ownership.";
-
 			head.appendChild(left);
-			head.appendChild(sub);
 
 			const grid = document.createElement("div");
 			grid.className = "weaponGrid";
@@ -419,6 +488,7 @@
 			}
 
 			const weapons = parseWeaponsFromTable(table);
+			totalWeapons = weapons.length;
 
 			// Group by type
 			const byType = new Map();
