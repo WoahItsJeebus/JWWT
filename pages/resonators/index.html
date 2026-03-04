@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 	<meta charset="utf-8" />
+	<meta name="referrer" content="no-referrer">
 	<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 	<meta name="theme-color" content="#0b0f17">
 	<title>Resonators — JWWT</title>
@@ -103,6 +104,14 @@
 
 			return images;
 		}
+		
+		async function resolveOriginalImageUrl(pageTitle){
+			const url = `${API_BASE}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageimages&format=json&piprop=original&origin=*`;
+			const res = await fetch(url);
+			const data = await res.json();
+			const page = Object.values(data.query.pages)[0];
+			return page?.original?.source || "";
+		}
 
 		function createCard(title, imgSrc){
 			const el = document.createElement("div");
@@ -113,9 +122,20 @@
 			img.src = imgSrc;
 			img.alt = title;
 
-			// IMPORTANT: avoid Fandom hotlink 404s
+			// Belt + suspenders for mobile Safari
 			img.referrerPolicy = "no-referrer";
+			img.setAttribute("referrerpolicy", "no-referrer");
+			img.addEventListener("error", async ()=>{
+				// Prevent infinite loops
+				if (img.dataset.fallbackTried) return;
+				img.dataset.fallbackTried = "1";
 
+				const original = await resolveOriginalImageUrl(title);
+				if (original && original !== img.src) {
+					img.src = original;
+				}
+			});
+			
 			el.appendChild(img);
 
 			el.addEventListener("click", ()=>{
