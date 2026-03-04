@@ -774,7 +774,8 @@ header>#toolbarFade {
   pointer-events:none;
 }
 
-/* The actual pill stays “lifted” */
+/* ===== Bottom Tabs Dock (iOS rubber-band safe) ===== */
+
 .tabsBar .tabs{
   pointer-events: auto;
 
@@ -791,9 +792,68 @@ header>#toolbarFade {
   background: rgba(0,0,0,.58);
   transition: background-color 400ms ease, border-color 400ms ease;
 
-  /* width: min(560px, calc(100vw - 24px)); */
-  overflow: hidden;
+  /* ✅ let content decide width, but don't exceed the viewport */
+  width: fit-content;
+  max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
+
+  /* ✅ if tabs don't fit, scroll instead of clipping/ellipsis */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+
   margin: 0 auto 12px auto;
+}
+
+/* Hide scrollbar for the tabs row (optional, matches your style) */
+.tabsBar .tabs::-webkit-scrollbar{ height: 0; }
+.tabsBar .tabs{ scrollbar-width: none; }
+
+/* Each button sizes to its label */
+.tabBtn{
+  position: relative;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: none;
+
+  padding: 8px 12px;
+  border-radius: 24px;
+  cursor: pointer;
+
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: .2px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+
+  /* ✅ don't force equal widths */
+  flex: 0 0 auto;
+  min-width: max-content;
+
+  /* ✅ do not ellipsis tab labels */
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+
+  transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease;
+}
+
+/* Small phones: tighten slightly so you scroll less often */
+@media (max-width: 420px){
+  .tabBtn{
+    padding: 7px 10px;
+    font-size: 11px;
+    gap: 5px;
+  }
+  .tabDot{
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+  }
 }
 
 
@@ -808,39 +868,6 @@ header>#toolbarFade {
 		width: min(500px,
 				calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
 	}
-}
-
-.tabBtn {
-	position: relative;
-	appearance: none;
-	border: 1px solid transparent;
-	background: transparent;
-	color: var(--muted);
-	text-decoration: none;
-
-	padding: 8px 12px;
-	border-radius: 24px;
-	cursor: pointer;
-
-	font-weight: 800;
-	font-size: 12px;
-	letter-spacing: .2px;
-
-	display: flex;
-	align-items: center;
-	gap: 6px;
-
-	/* squeeze evenly across the row */
-	flex: 1 1 0;
-	min-width: 0;
-	justify-content: center;
-
-	/* never wrap vertically */
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-
-	transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease;
 }
 
 .tabBtn:hover {
