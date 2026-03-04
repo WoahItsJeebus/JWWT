@@ -1297,7 +1297,7 @@ input[type="range"] {
 	padding: 16px;
 
 	/* Mobile default (portrait phones) */
-	grid-template-columns: 1fr;
+	grid-template-columns: repeat(2, 1fr);
 }
 
 /* Landscape phones / small tablets */
