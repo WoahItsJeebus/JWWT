@@ -830,7 +830,7 @@ header>#toolbarFade {
 	gap: 8px;
 
 	/* squeeze evenly across the row */
-	flex: 1 1 0;
+	flex: 1 1 1;
 	min-width: 0;
 	justify-content: center;
 
