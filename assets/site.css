@@ -918,6 +918,22 @@ header>#toolbarFade {
 	}
 }
 
+/* Only apply hover polish on real hover devices (mouse/trackpad) */
+@media (hover: hover) and (pointer: fine){
+  .weaponCard:hover{
+    transform: scale(1.09);
+  }
+
+  .tabBtn:hover{
+    border-color: rgba(255, 255, 255, .42);
+    color: var(--text);
+  }
+
+  .tabsBar .tabs:hover{
+    background: rgba(0, 0, 0, .88);
+  }
+}
+
 /* Page containers */
 .page {
 	display: none;
@@ -1374,4 +1390,17 @@ input[type="range"] {
 
 .resCard:hover{
 	transform: scale(0.95);
+}
+
+/* Touch feedback that ends correctly */
+.weaponCard:active{
+  transform: scale(1.02);
+}
+
+.tabBtn:active{
+  transform: translateY(1px);
+}
+
+.weaponCard, .tabBtn{
+  touch-action: manipulation;
 }
