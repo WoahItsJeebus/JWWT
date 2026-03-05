@@ -84,56 +84,63 @@
 
 			return members.filter(m => m.ns === 0);
 		}
+		
+		function chunkArray(arr, size){
+			const out = [];
+			for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+			return out;
+		}
 
-		async function fetchThumbnailsBatch(titles){
-			const chunks = [];
-			while (titles.length) chunks.push(titles.splice(0, 50));
-
+		async function fetchPageImagesBatch(titles, { thumbSize = 600 } = {}){
+			// Returns: { [title]: { original: "", thumb: "" } }
+			const chunks = chunkArray(titles, 50);
 			const images = {};
 
 			for (const chunk of chunks){
-				const url = `${API_BASE}?action=query&titles=${encodeURIComponent(chunk.join("|"))}&prop=pageimages&format=json&pithumbsize=400&origin=*`;
+				const url =
+					`${API_BASE}?action=query` +
+					`&titles=${encodeURIComponent(chunk.join("|"))}` +
+					`&prop=pageimages` +
+					`&piprop=original` +
+					`&pithumbsize=${encodeURIComponent(thumbSize)}` +
+					`&format=json&origin=*`;
+
 				const res = await fetch(url);
 				const data = await res.json();
 
-				for (const page of Object.values(data.query.pages)){
-					if (page.thumbnail){
-						images[page.title] = page.thumbnail.source;
-					}
+				for (const page of Object.values(data?.query?.pages || {})){
+					if (!page?.title) continue;
+
+					images[page.title] = {
+						original: page?.original?.source || "",
+						thumb: page?.thumbnail?.source || ""
+					};
 				}
 			}
 
 			return images;
 		}
-		
-		async function resolveOriginalImageUrl(pageTitle){
-			const url = `${API_BASE}?action=query&titles=${encodeURIComponent(pageTitle)}&prop=pageimages&format=json&piprop=original&origin=*`;
-			const res = await fetch(url);
-			const data = await res.json();
-			const page = Object.values(data.query.pages)[0];
-			return page?.original?.source || "";
-		}
-
-		function createCard(title, imgSrc){
+		function createCard(title, imgInfo){
 			const el = document.createElement("div");
 			el.className = "resCard";
 			if (!owned[title]) el.classList.add("unowned");
 
 			const img = document.createElement("img");
-			img.src = imgSrc;
+
+			// Prefer original; fall back to thumb.
+			img.src = imgInfo.original || imgInfo.thumb || "";
 			img.alt = title;
 
-			// Belt + suspenders for mobile Safari
 			img.referrerPolicy = "no-referrer";
 			img.setAttribute("referrerpolicy", "no-referrer");
-			img.addEventListener("error", async ()=>{
-				// Prevent infinite loops
+
+			// If original fails for some reason, fall back to thumb (not the other way around)
+			img.addEventListener("error", ()=>{
 				if (img.dataset.fallbackTried) return;
 				img.dataset.fallbackTried = "1";
 
-				const original = await resolveOriginalImageUrl(title);
-				if (original && original !== img.src) {
-					img.src = original;
+				if (imgInfo.thumb && img.src !== imgInfo.thumb){
+					img.src = imgInfo.thumb;
 				}
 			});
 
@@ -148,7 +155,6 @@
 
 			grid.appendChild(el);
 		}
-
 		function updateCount(){
 			const total = Object.keys(owned).length;
 			const ownedCount = Object.values(owned).filter(Boolean).length;
@@ -157,15 +163,22 @@
 
 		async function init(){
 			const members = await fetchAllResonators();
-			const titles = members.map(m => m.title);
+			const titles = members.map(m => m.title).sort((a,b)=>a.localeCompare(b));
 
-			const thumbs = await fetchThumbnailsBatch([...titles]);
 			totalResonators = titles.length;
 			grid.innerHTML = "";
 
-			for (const title of titles.sort()){
-				if (!thumbs[title]) continue;
-				createCard(title, thumbs[title]);
+			// Fetch originals + thumbs (batch)
+			const imgMap = await fetchPageImagesBatch(titles, { thumbSize: 600 });
+
+			for (const title of titles){
+				const info = imgMap[title];
+				if (!info) continue;
+
+				// Skip if neither exists
+				if (!info.original && !info.thumb) continue;
+
+				createCard(title, info);
 			}
 
 			updateCount();
