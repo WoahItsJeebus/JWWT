@@ -1,7 +1,13 @@
 {
 	"1.0": {
-		"1.0.0": [
+		"1.0.0.0": [
 			"Initial release."
+		],
+		"1.0.1.9": [
+			"Updated resonators page to use higher quality icons."
+		],
+		"1.0.1.10": [
+			"Added all pages to tab bar on each page."
 		]
 	}
 }

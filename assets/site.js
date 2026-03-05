@@ -2,7 +2,7 @@
    site.js — shared helpers for all pages
    ============================================================ */
    
-   export const _VERSION = "1.0.1.9";
+   export const _VERSION = "1.0.1.10";
    
 /**
  *
@@ -18,7 +18,7 @@ export function startOrbBackground(opts = {}) {
 		stop() {}
 	};
 
-	// Idempotent: restart cleanly
+	// restart cleanly
 	if (typeof __orbBgStop === "function") __orbBgStop();
 
 	const cfg = {
@@ -28,7 +28,7 @@ export function startOrbBackground(opts = {}) {
 		sizeMin: 260,
 		sizeMax: 560,
 
-		// IMPORTANT: base size is constant; we animate scale instead
+		// base size is constant; animate scale instead
 		baseSizePx: 560,
 
 		durMinMs: 5000,

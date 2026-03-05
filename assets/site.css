@@ -1392,7 +1392,7 @@ input[type="range"] {
 	transform: scale(0.95);
 }
 
-/* Touch feedback that ends correctly */
+/* Touch feedback */
 .weaponCard:active{
   transform: scale(1.02);
 }
